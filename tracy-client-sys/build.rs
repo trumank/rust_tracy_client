@@ -12,6 +12,37 @@ fn link_dependencies() {
             ::std::process::exit(0xfd);
         }
     }
+
+    let tool = cc::Build::default().get_compiler();
+    let lib = if tool.is_like_gnu() {
+        "libstdc++.a"
+    } else if tool.is_like_clang() {
+        "libc++.a"
+    } else {
+        return;
+    };
+
+    let output = tool
+        .to_command()
+        .arg("--print-file-name")
+        .arg(lib)
+        .output()
+        .unwrap();
+    if !output.status.success() || output.stdout.is_empty() {
+        return;
+    }
+    let path = match std::str::from_utf8(&output.stdout) {
+        Ok(path) => std::path::PathBuf::from(path),
+        Err(_) => return,
+    };
+    if !path.is_absolute() {
+        return;
+    }
+    println!(
+        "cargo:rustc-link-search=native={}",
+        path.parent().unwrap().display()
+    );
+    println!("cargo:rustc-link-lib=static=stdc++");
 }
 
 fn set_feature_defines(mut c: cc::Build) -> cc::Build {
@@ -79,6 +110,13 @@ fn build_tracy_client() {
             }
         }
         let _ = builder.try_flags_from_environment("TRACY_CLIENT_SYS_CXXFLAGS");
+
+        let tool = cc::Build::default().get_compiler();
+
+        if tool.is_like_msvc() {
+            builder.flag("/MT");
+        };
+
         builder.compile("libtracy-client.a");
         link_dependencies();
     }
